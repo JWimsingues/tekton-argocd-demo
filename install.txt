@@ -1,0 +1,6 @@
+CLI for Tekton:
+https://github.com/tektoncd/cli#installing-tkn
+
+CLI for ArgoCD:
+https://argo-cd.readthedocs.io/en/stable/cli_installation/
+
