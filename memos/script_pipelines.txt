@@ -1,0 +1,114 @@
+Before the presentation, say that you are not following all the best practices
+like you will use shortcut regarding RBAC, you will use http routes, you will use
+kubeadmin user, this kind of things.
+
+Install Operators:
+- Red Hat OpenShift Pipelines
+- Red Hat OpenShift GitOps
+
+Check if install is ok:
+oc api-resources --api-group=tekton.dev
+
+Check if you have enough rights:
+oc auth can-i create Pipeline
+oc auth can-i create Task
+oc auth can-i create PipelineResource
+oc auth can-i create PipelineRun
+
+Create a project for the demo:
+In this demo, the pipeline you create uses tools such as s2i and Buildah to create a container image for an application and build the image.
+Building container images using build tools (such as s2i, Buildah and Kaniko) require privileged access to the cluster.
+OpenShift default security settings do not allow access to privileged containers unless correctly configured.
+This operator has created a ServiceAccount with the required permissions to run privileged pods for building images.
+The name of this service account is easy to remember. It is named pipeline.
+
+oc new-project pipelines-tutorial
+
+You can verify that the pipeline has been created by running the following command:
+oc get sa
+
+Create first task hello:
+oc create -f tasks/1_hello.yaml
+tkn task ls
+tkn task start --showlog hello
+
+See the diagram on images, explain what we are going to demo
+
+Goal of the CI we will do:
+- build a frontend and push the image to the internal registry 
+https://github.com/jwimsingues/pipelines-vote-ui.git
+- build a backend and push the image to the internal registry
+https://github.com/jwimsingues/pipelines-vote-api.git 
+- deploy both application
+
+Create more complicated tasks:
+oc create -f tasks/2_1_apply_manifests.yaml
+oc create -f tasks/2_2_update_deployment_task.yaml
+oc create -f tasks/2_3_persistent_volume_claim.yaml
+tkn task ls
+
+Create our first pipeline:
+oc create -f pipeline/3_build_and_deploy.yaml
+tkn pipeline ls
+
+Trigger the pipeline:
+tkn pipeline start build-and-deploy \
+  -w name=shared-workspace,claimName=source-pvc \
+  -p deployment-name=pipelines-vote-api \
+  -p git-url=https://github.com/jwimsingues/pipelines-vote-api.git \
+  -p IMAGE=image-registry.openshift-image-registry.svc:5000/pipelines-tutorial/vote-api:1.0
+
+tkn pipeline start build-and-deploy \
+  -w name=shared-workspace,claimName=source-pvc \
+  -p deployment-name=pipelines-vote-ui \
+  -p git-url=https://github.com/jwimsingues/pipelines-vote-ui.git \
+  -p IMAGE=image-registry.openshift-image-registry.svc:5000/pipelines-tutorial/vote-ui:1.0
+
+tkn pipeline ls
+tkn pipelinerun ls
+let's see the logs in the UI
+
+shortcut to rerun the last pipeline:
+tkn pipeline start build-and-deploy --last
+
+delete all completed pods by:
+oc delete pod --field-selector=status.phase==Succeeded
+and delete all errored pods by:
+oc delete pod --field-selector=status.phase==Failed
+
+####
+
+Create the trigger:
+A TriggerTemplate is a resource which have parameters that can be substituted anywhere 
+within the resources of template.
+oc create -f triggers/4_trigger_template.yaml
+
+TriggerBindings is a map enable you to capture fields from an event and store them as
+parameters, and replace them in triggerTemplate whenever an event occurs.
+The exact paths (keys) of parameter we need can be found by examining the event payload (eg: GitHub events).
+oc create -f triggers/5_trigger_binding.yaml
+
+Trigger combines TriggerTemplate, TriggerBindings and interceptors. They are used as ref inside the EventListener.
+oc create -f triggers/6_trigger.yaml
+
+The secret is to verify events are coming from correct source code management
+oc create -f triggers/7_github_secret.yaml
+
+This component sets up a Service and listens for events. It also connects a TriggerTemplate to a TriggerBinding,
+into an addressable endpoint (the event sink)
+oc create -f triggers/8_8_event_listener.yaml
+
+Finally, we need to expose the eventlistener service as a route
+$ oc expose svc el-vote-app
+Let's get the webhook URL: oc  get route el-vote-app --template='http://{{.spec.host}}'
+
+Configure the webhook inside github:
+Settings > Webhooks > Add Webhook
+Insert the previous URL + Select Content type as application/json > Add secret eg: 1234567 > Click on Add Webhook
+
+When we perform any push event the following should happen.
+- The configured webhook in vote-api GitHub repository should push the event payload to our route (exposed EventListener Service).
+- The Event-Listener will pass the event to the TriggerBinding and TriggerTemplate pair
+- TriggerBinding will extract parameters needed for rendering the TriggerTemplate. Successful rendering of TriggerTemplate should
+create a pipeline run
+

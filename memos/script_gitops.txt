@@ -1,0 +1,63 @@
+oc project openshift-gitops
+oc adm policy  add-cluster-role-to-user -z openshift-gitops-argocd-application-controller cluster-admin
+oc extract secret/openshift-gitops-cluster -n openshift-gitops --to=-
+
+Classic example of argocd: add a repository
+Enter the following details and click on Create.
+Application Name: cluster-configs
+Project: default
+Sync Policy: Manual
+Repository URL: https://github.com/jwimsingues/tekton-argocd-demo
+Revision: HEAD
+Path: argocd/cluster_config
+Destination: https://kubernetes.default.svc
+Namespace: default
+Directory Recurse: checked
+
+Now let's say I have 2 teams, team 1 and team 2, 
+team 1 is not that mature, team 2 is fully using the potential of OC gitops and OC pipelines
+for security reason, we do not want team 1 and team 2 to have the same argocd argocd instance
+also, we can to keep it splited from ours and we want them to be autonomous on their code
+
+oc new-project team1
+oc create -f argocd.yaml
+oc extract secret/argocd-team1-cluster --to=-
+
+let's see the code of team 1
+Application Name: spring-petclinic
+Project: default
+Sync Policy: Automatic
+Self-heal: checked
+Repository URL: https://github.com/jwimsingues/tekton-argocd-demo
+Revision: HEAD
+Path: argocd/team1/spring-petclinic
+Destination: https://kubernetes.default.svc
+Namespace: team1
+Directory Recurse: checked
+
+----
+oc new-project team2
+oc create -f argocd.yaml
+oc extract secret/argocd-team2-cluster --to=-
+
+Application Name: iac
+Project: default
+Sync Policy: Automatic
+Repository URL: https://github.com/jwimsingues/tekton-argocd-demo
+Revision: HEAD
+Path: argocd/team2/iac
+Destination: https://kubernetes.default.svc
+Namespace: team1
+Directory Recurse: checked
+
+tkn pipeline start build-and-push \
+    -w name=shared-workspace,claimName=source-pvc \
+    -p git-url=https://github.com/jwimsingues/pipelines-vote-api.git \
+    -p IMAGE=image-registry.openshift-image-registry.svc:5000/team2/vote-api:1.0
+
+tkn pipeline start build-and-push \
+    -w name=shared-workspace,claimName=source-pvc \
+    -p git-url=https://github.com/jwimsingues/pipelines-vote-ui.git \
+    -p IMAGE=image-registry.openshift-image-registry.svc:5000/team2/vote-ui:1.0
+
+delete the pods and it's running
