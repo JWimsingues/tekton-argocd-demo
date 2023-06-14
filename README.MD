@@ -21,7 +21,3 @@ Work in pairs with:
 Which have been forked to:
 - https://github.com/JWimsingues/pipelines-vote-ui
 - https://github.com/JWimsingues/pipelines-vote-api
-
-# Presentation
-
-If you want to do this presentation for your customer, do not hesitate to use the memos available on the memo folder. Also, some slides are available, feel free to reach out to me to get them.
